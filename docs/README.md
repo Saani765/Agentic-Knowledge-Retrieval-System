@@ -1,4 +1,4 @@
-# Census Document Q&A Chatbot
+# Agentic Knowledge Retrieval System
 
 A multi-agent LangGraph system for querying government census documents with citations, summaries, and auto-generated charts/tables.
 
@@ -80,6 +80,6 @@ census-chatbot/
 Local Runs : Backend -> uvicorn main:app --host 0.0.0.0 --port 8000 
                         uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-                UI   -> chainlit run ui/app.py --host 0.0.0.0 --port 8001
+            UI   -> chainlit run ui/app.py --host 0.0.0.0 --port 8001
 
-                Ingestion -> python -m app.retrieval.vectorstore
+            Ingestion -> python -m app.retrieval.vectorstore
