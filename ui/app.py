@@ -1,6 +1,6 @@
 """
 Chainlit UI — Census Document Q&A Bot
-Full observability: every node, tool call, chunk, and citation visible as steps.
+Full observability + inline artifact rendering.
 Run: chainlit run ui/app.py --port 8001
 """
 
@@ -36,7 +36,7 @@ async def on_start():
             "Expand any step to see tools called, chunks retrieved, and citations used.\n\n"
             "| Query Type | Example |\n"
             "|---|---|\n"
-            "| 🔍 **Factual** | *Literacy rate in Odisha 2011?* |\n"
+            "| 🔍 **Factual** | *Literacy rate in Uttar Pradesh 2011?* |\n"
             "| 📝 **Summary** | *Summarize key findings from Odisha data* |\n"
             "| 🎨 **Chart**   | *Bar chart of male vs female population in MP* |\n"
             "| 📋 **Table**   | *Build a table of literacy rates across states* |\n"
@@ -68,7 +68,7 @@ async def on_message(message: cl.Message):
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.HTTPStatusError as e:
-            sup_step.output = f"❌ Server error `{e.response.status_code}` — check backend terminal"
+            sup_step.output = f"❌ Server error `{e.response.status_code}`"
             await cl.Message(content=f"❌ Backend error `{e.response.status_code}`. Check terminal logs.").send()
             return
         except httpx.HTTPError as e:
@@ -76,12 +76,12 @@ async def on_message(message: cl.Message):
             await cl.Message(content=f"❌ Cannot connect to `{API_URL}`. Is the backend running?").send()
             return
 
-        intent        = data.get("intent", "query")
-        refused       = data.get("refused", False)
+        intent         = data.get("intent", "query")
+        refused        = data.get("refused", False)
         refusal_reason = data.get("refusal_reason", "")
-        citations     = data.get("citations", [])
-        artifact_path = data.get("artifact_path", "")
-        answer        = data.get("answer", "").strip()
+        citations      = data.get("citations", [])
+        artifact_path  = data.get("artifact_path", "")
+        answer         = data.get("answer", "").strip()
 
         emoji, label, _ = INTENT_META.get(intent, ("⚙️", "Agent", ""))
         color = INTENT_COLOR.get(intent, "⬜")
@@ -89,11 +89,11 @@ async def on_message(message: cl.Message):
         sup_step.output = (
             f"{color} **Intent classified:** `{intent}`\n\n"
             f"**Routing to:** {emoji} {label}\n\n"
-            f"**Model used:** `llama-3.1-8b-instant` (8B — fast routing)"
+            f"**Model used:** `llama-3.1-8b-instant`"
         )
 
     # ════════════════════════════════════════════════════════
-    # NODE 2 — AGENT (RAG / Summarizer / Artifact / Refuse)
+    # NODE 2 — AGENT
     # ════════════════════════════════════════════════════════
     emoji, label, agent_desc = INTENT_META.get(intent, ("⚙️", "Agent", "Processing..."))
 
@@ -120,42 +120,34 @@ async def on_message(message: cl.Message):
                     "**Action:** Refused before search — no documents queried"
                 )
 
-        elif intent == "artifact" and artifact_path:
+        elif intent == "artifact":
+            status = "✅ Success" if artifact_path else "⚠️ No artifact produced"
+            retries = data.get("retry_count", 0)
             agent_step.output = (
-                f"**🔍 Tool called:** `search_documents` → retrieved chunks\n\n"
-                f"**⚙️ Tool called:** `execute_python` → code executed\n\n"
-                f"**📁 Artifact produced:** `{artifact_path}`\n\n"
-                f"**✅ Status:** Success"
-                + (f"\n\n**🔁 Retries:** {data.get('retry_count', 0)}" if data.get("retry_count") else "")
-            )
-
-        elif intent == "artifact" and not artifact_path:
-            agent_step.output = (
-                f"**🔍 Tool called:** `search_documents` → retrieved chunks\n\n"
-                f"**⚙️ Tool called:** `execute_python`\n\n"
-                f"**⚠️ Status:** Code executed but no artifact file produced\n\n"
-                f"**🔁 Retries:** {data.get('retry_count', 0)}"
+                f"**🔍 Tool:** `search_documents` → chunks retrieved\n\n"
+                f"**⚙️ Tool:** `execute_python` → code executed\n\n"
+                f"**📁 Artifact:** `{artifact_path or 'none'}`\n\n"
+                f"**Status:** {status}"
+                + (f"\n\n**🔁 Retries:** {retries}" if retries else "")
             )
 
         else:
             chunk_count = len(citations)
             sources = list({f"`{c['source_file']}`" for c in citations})
             sources_str = ", ".join(sources) if sources else "none"
-
             agent_step.output = (
-                f"**🔍 Tool called:** `search_documents`\n\n"
+                f"**🔍 Tool:** `search_documents`\n\n"
                 f"**📦 Chunks retrieved:** {chunk_count}\n\n"
                 f"**📄 Source files:** {sources_str}\n\n"
                 f"**✅ Status:** Answer generated with {chunk_count} citation(s)"
             )
 
     # ════════════════════════════════════════════════════════
-    # NODE 3 — CITATIONS DETAIL (expanded per source)
+    # NODE 2b — CITATIONS DETAIL
     # ════════════════════════════════════════════════════════
     if citations and not refused:
         async with cl.Step(name=f"📚  Node 2b · Citations ({len(citations)} chunks)", type="tool") as cite_step:
-            cite_step.input = "Deduplicating and ranking retrieved chunks by relevance"
-
+            cite_step.input = "Deduplicating and displaying retrieved chunks"
             lines = []
             seen = set()
             for i, c in enumerate(citations):
@@ -170,7 +162,6 @@ async def on_message(message: cl.Message):
                     f"- 🔑 Chunk ID: `{c.get('chunk_id', 'N/A')}`\n"
                     f"- 📝 Snippet: *\"{c.get('snippet', '')[:120]}...\"*"
                 )
-
             cite_step.output = "\n\n---\n\n".join(lines)
 
     # ════════════════════════════════════════════════════════
@@ -182,7 +173,6 @@ async def on_message(message: cl.Message):
             "Appending artifact path if produced\n\n"
             "Saving turn to conversation history"
         )
-
         unique_sources = len({c['source_file'] for c in citations})
         rb_step.output = (
             f"**Citations deduplicated:** {len(citations)} chunks → {unique_sources} unique source(s)\n\n"
@@ -191,7 +181,7 @@ async def on_message(message: cl.Message):
         )
 
     # ════════════════════════════════════════════════════════
-    # FINAL MESSAGE
+    # FINAL MESSAGE + INLINE ARTIFACT
     # ════════════════════════════════════════════════════════
     if not answer:
         await cl.Message(content="⚠️ Agent returned an empty response. Check the backend terminal.").send()
@@ -199,7 +189,33 @@ async def on_message(message: cl.Message):
 
     elements = []
 
-    # Citations inline block
+    # ── Inline PNG chart ─────────────────────────────────────────────────────
+    if artifact_path and artifact_path.endswith((".png", ".jpg", ".jpeg")):
+        try:
+            elements.append(
+                cl.Image(
+                    name="📊 Generated Chart",
+                    path=artifact_path,
+                    display="inline",
+                )
+            )
+        except Exception:
+            answer += f"\n\n📊 Chart saved at: `{artifact_path}`"
+
+    # ── Downloadable CSV ──────────────────────────────────────────────────────
+    if artifact_path and artifact_path.endswith(".csv"):
+        try:
+            elements.append(
+                cl.File(
+                    name="📋 Data Table (.csv)",
+                    path=artifact_path,
+                    display="inline",
+                )
+            )
+        except Exception:
+            answer += f"\n\n📋 Table saved at: `{artifact_path}`"
+
+    # ── Citations sidebar entries ─────────────────────────────────────────────
     if citations and not refused:
         citation_lines = "\n\n---\n**📚 Sources**\n"
         seen = set()
@@ -218,19 +234,5 @@ async def on_message(message: cl.Message):
                     )
                 )
         answer += citation_lines
-
-    # Inline chart
-    if artifact_path and artifact_path.endswith((".png", ".jpg", ".jpeg")):
-        try:
-            elements.append(cl.Image(name="📊 Generated Chart", path=artifact_path, display="inline"))
-        except Exception:
-            answer += f"\n\n📊 Chart saved at: `{artifact_path}`"
-
-    # CSV download
-    if artifact_path and artifact_path.endswith(".csv"):
-        try:
-            elements.append(cl.File(name="📋 Data Table (.csv)", path=artifact_path, display="inline"))
-        except Exception:
-            answer += f"\n\n📋 Table saved at: `{artifact_path}`"
 
     await cl.Message(content=answer, elements=elements).send()
