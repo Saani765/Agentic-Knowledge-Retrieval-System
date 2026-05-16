@@ -1,0 +1,29 @@
+# Environment files
+.env
+.env.*
+
+# Python virtual environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Data files/folders
+data/
+datasets/
+*.csv
+*.xlsx
+*.json
+*.parquet
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+
+# Backup files
+*.bak

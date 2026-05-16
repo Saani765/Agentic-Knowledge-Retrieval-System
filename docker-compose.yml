@@ -1,0 +1,39 @@
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: census_api
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - DOCS_DIR=/app/data/documents
+      - CHROMA_DIR=/app/workspace/chroma
+    volumes:
+      - ./data:/app/data:ro
+      - ./workspace:/app/workspace
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: census_ui
+    ports:
+      - "8001:8001"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    command: chainlit run ui/app.py --host 0.0.0.0 --port 8001
+
+volumes:
+  workspace:
