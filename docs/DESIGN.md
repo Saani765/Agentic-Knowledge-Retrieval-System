@@ -86,7 +86,6 @@ Both are acceptable per the requirements. Chainlit is chosen because:
 - It has native `Element` types for inline image and file rendering — useful for chart artifacts
 - It handles async streaming naturally — no `st.session_state` management
 
-The trade-off: Chainlit is less widely known than Streamlit and has a smaller ecosystem. If the interviewer is more comfortable with Streamlit, swapping the UI is fully isolated to `ui/app.py` and does not touch any agent logic.
 
 ---
 
