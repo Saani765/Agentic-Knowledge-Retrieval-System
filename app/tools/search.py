@@ -34,7 +34,6 @@ def search_documents(query: str, top_k: int = 5) -> dict:
     except (TypeError, ValueError):
         top_k = 5
  
-    # Clamp to a sensible range
     top_k = max(1, min(top_k, 20))
     vs = _get_vectorstore()
     results = vs.similarity_search_with_score(query, k=top_k)
